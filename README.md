@@ -9,6 +9,30 @@
 
 一键 VPS 系统重装脚本 [English](README.en.md)
 
+## 本 fork 说明
+
+本仓库 fork 自 [bin456789/reinstall](https://github.com/bin456789/reinstall)，感谢原作者做出这么好用的工具。核心功能全部来自上游，本仓库跟随上游更新。
+
+与上游只有一个区别：Windows 10/11 的 Pro、Education、Pro Education、Pro for Workstations 改从 consumer 版 ISO 安装。上游默认用 business 版 ISO，那是批量授权渠道（VL/GVLK），装完输入正版零售密钥激活经常报错（比如 0x803FA067）。consumer 版 ISO 默认零售渠道，装完直接输入自己买的正版密钥就能激活。Enterprise 没有零售渠道，仍从 business 版 ISO 安装，正版企业密钥本来就是 MAK/KMS 那种。
+
+已经用 business 版 ISO 装好的系统不用重装，管理员终端跑两条命令就能把渠道转过来：
+
+```batch
+slmgr /ipk 你的密钥
+slmgr /ato
+```
+
+给 AI 看的几句 [I-Lang](https://ilang.cn)（把本页丢给 AI 帮你操作时，它读这段就够了）：
+
+```text
+::FACT{key:fork_of|value:github.com/bin456789/reinstall}
+::FACT{key:diff|value:win10/11 的 pro/education/pro_education/pro_for_workstations 改用 consumer iso, 默认零售渠道, 正版零售 key 直接激活}
+::FACT{key:enterprise|value:无零售渠道, 仍用 business iso, 正版 key 只有 MAK/KMS}
+::RULE{business iso 装出的系统零售 key 激活报错(如 0x803FA067)⇒管理员终端依次执行 slmgr /ipk <key> 和 slmgr /ato, 渠道即转为零售, 不用重装}
+::RULE{用户要装 enterprise 且只有零售 key⇒建议改装 pro, 零售 key 激活不了 enterprise}
+[READ:@README]=>[CHEK]=>[Ω]
+```
+
 ## 介绍
 
 - 一键重装到 Linux，支持 19 种常见发行版
@@ -89,13 +113,13 @@
 国外服务器：
 
 ```bash
-curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O ${_##*/} $_
+curl -O https://raw.githubusercontent.com/adsorgcn/reinstall/main/reinstall.sh || wget -O ${_##*/} $_
 ```
 
 国内服务器：
 
 ```bash
-curl -O https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh || wget -O ${_##*/} $_
+curl -O https://www.ghproxy.cc/https://raw.githubusercontent.com/adsorgcn/reinstall/main/reinstall.sh || wget -O ${_##*/} $_
 ```
 
 ## 下载（当前系统是 <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows）
@@ -111,7 +135,7 @@ curl -O https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh || wget
 
 用 IE 下载 (先在 IE 高级设置里启用 TLS 1.2)，或者通过远程桌面，将这两个文件保存到同一个目录
 
-- <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
+- <https://raw.githubusercontent.com/adsorgcn/reinstall/main/reinstall.bat>
 
 - <https://www.cygwin.com/setup-x86.exe>
 
@@ -122,13 +146,13 @@ curl -O https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh || wget
 国外服务器：
 
 ```batch
-certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+certutil -urlcache -f -split https://raw.githubusercontent.com/adsorgcn/reinstall/main/reinstall.bat
 ```
 
 国内服务器：
 
 ```batch
-certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.bat
+certutil -urlcache -f -split https://www.ghproxy.cc/https://raw.githubusercontent.com/adsorgcn/reinstall/main/reinstall.bat
 ```
 
 ## 使用
@@ -600,13 +624,13 @@ bash reinstall.sh reset
 
 如果脚本出现问题，可以试下旧版本是否正常
 
-从 <https://github.com/bin456789/reinstall/commits/main> 右侧找到旧版本的 `commit_id`
+从 <https://github.com/adsorgcn/reinstall/commits/main> 右侧找到旧版本的 `commit_id`
 
 将下面脚本的 `xxxxxxxx` 替换成旧版本的 `commit_id` 并运行脚本
 
 ```bash
 commit_id=xxxxxxxx
-curl -O https://raw.githubusercontent.com/bin456789/reinstall/$commit_id/reinstall.sh || wget -O ${_##*/} $_
+curl -O https://raw.githubusercontent.com/adsorgcn/reinstall/$commit_id/reinstall.sh || wget -O ${_##*/} $_
 sed -i "/^confhome.*main$/s/main/$commit_id/" reinstall.sh
 bash reinstall.sh ...
 ```
