@@ -1018,17 +1018,14 @@ get_windows_iso_link() {
             ;;
         10)
             case "$edition" in
-            home | 'home single language')
+            # 除 enterprise 外一律用 consumer iso，理由同 win11：
+            # consumer iso 默认零售渠道，正版零售 key 可直接激活
+            home | 'home single language' | pro | education | 'pro education' | 'pro for workstations')
                 echo 'consumer editions'
                 ;;
-            pro | enterprise)
+            enterprise)
+                # enterprise 没有零售渠道，只在 business iso 里
                 echo 'business editions'
-                ;;
-            education | 'pro education' | 'pro for workstations')
-                case "$arch_win" in
-                arm64) echo 'consumer editions' ;;     # 只能从 consumer 获取
-                x86 | x64) echo 'business editions' ;; # iso 更小
-                esac
                 ;;
             # iot
             'iot enterprise')
