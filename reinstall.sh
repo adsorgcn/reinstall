@@ -1049,21 +1049,15 @@ get_windows_iso_link() {
             ;;
         11)
             case "$edition" in
-            home | 'home single language')
+            # 除 enterprise 外一律用 consumer iso
+            # consumer iso 默认零售渠道，用户的正版零售 key 可直接激活
+            # business iso 默认 VL/GVLK 渠道，装完再输零售 key 在设置界面容易报错
+            home | 'home single language' | pro | education | 'pro education' | 'pro for workstations')
                 echo 'consumer editions'
                 ;;
-            pro | enterprise)
+            enterprise)
+                # enterprise 没有零售渠道，只在 business iso 里
                 echo 'business editions'
-                ;;
-            education | 'pro education' | 'pro for workstations')
-                # arm business iso 都没有 education, pro education, pro for workstations
-                # 即使它的名字包含 EDU
-                # SW_DVD9_Win_Pro_10_22H2.31_Arm64_English_Pro_Ent_EDU_N_MLF_X24-05074.ISO
-                # en-us_windows_11_business_editions_version_25h2_arm64_dvd_8afc9b39.iso
-                case "$arch_win" in
-                arm64) echo 'consumer editions' ;; # 只能从 consumer 获取
-                x64) echo 'business editions' ;;   # iso 更小
-                esac
                 ;;
             # iot
             'iot enterprise' | 'iot enterprise subscription')
