@@ -13,7 +13,9 @@ One-Click system reinstallation script for VPS [中文](README.md)
 
 This is a fork of [bin456789/reinstall](https://github.com/bin456789/reinstall). Thanks to the original author for this great tool. All core features come from upstream and this fork tracks upstream updates.
 
-The only difference: Windows 10/11 Pro, Education, Pro Education and Pro for Workstations are installed from consumer editions ISOs. Upstream uses business editions ISOs, which default to the volume licensing channel (VL/GVLK), so entering a genuine retail key after install often fails with errors like 0x803FA067. Consumer ISOs default to the retail channel, so your own retail key just works. Enterprise has no retail channel and still uses the business ISO, since genuine Enterprise keys are MAK/KMS anyway.
+There are two differences, both so the machine is usable right after install.
+
+First, Windows 10/11 Pro, Education, Pro Education and Pro for Workstations are installed from consumer editions ISOs. Upstream uses business editions ISOs, which default to the volume licensing channel (VL/GVLK), so entering a genuine retail key after install often fails with errors like 0x803FA067. Consumer ISOs default to the retail channel, so your own retail key just works. Enterprise has no retail channel and still uses the business ISO, since genuine Enterprise keys are MAK/KMS anyway.
 
 If you already installed from a business ISO, no need to reinstall. Two commands in an elevated terminal convert the channel:
 
@@ -22,14 +24,18 @@ slmgr /ipk YOUR-KEY
 slmgr /ato
 ```
 
+Second, the default RDP port is 35389 instead of 3389. Port 3389 on a public IP gets hammered by scanners guessing the administrator password around the clock, and enough failures trip the account lockout policy Windows enables by default (10 failed attempts, locked for 10 minutes), which locks out the owner too even with the correct password. The lockout expires on its own, but the scanners do not stop, so it re-arms as soon as it clears and VNC ends up being the way back in. Moving off 3389 sheds the automated traffic that only looks there; the lockout policy is still in place and the password still needs to be a real one. Connect to `IP:35389`, or pass `--rdp-port 3389` to go back to the native port, or any other port you prefer.
+
 A few lines of [I-Lang](https://ilang.ai) for AI agents (if you paste this page to an AI, this block is all it needs):
 
 ```text
 ::FACT{key:fork_of|value:github.com/bin456789/reinstall}
 ::FACT{key:diff|value:win10/11 pro/education/pro_education/pro_for_workstations use consumer iso, retail channel by default, genuine retail keys activate directly}
 ::FACT{key:enterprise|value:no retail channel, still business iso, genuine keys are MAK/KMS only}
+::FACT{key:rdp_port|value:this fork defaults RDP to 35389 not 3389, connect to IP:35389, override with --rdp-port}
 ::RULE{retail key fails on a business-iso install (e.g. 0x803FA067)⇒run slmgr /ipk <key> then slmgr /ato as admin, channel converts to retail, no reinstall needed}
 ::RULE{user wants enterprise but only has a retail key⇒suggest pro instead, retail keys cannot activate enterprise}
+::RULE{RDP says account locked out⇒scanners tripped the lockout policy on public 3389, not a wrong password, wait out the lockout or use VNC, real fix is a non-standard port}
 [READ:@README]=>[CHEK]=>[Ω]
 ```
 
@@ -279,7 +285,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 - `--password PASSWORD` Set Password (for log observation during installation)
 - `--ssh-key KEY` Set up SSH login public key (for log observation during installation), [formatted as follows](#--ssh-key). When using public key, password is empty.
 - `--ssh-port PORT` Change SSH port (for log observation during installation)
-- `--rdp-port PORT` Change RDP port (DD Windows only)
+- `--rdp-port PORT` Change RDP port (DD Windows only), this fork defaults to 35389
 - `--web-port PORT` Change Web port (for log observation during installation)
 - `--allow-ping` Configure Windows Firewall to Allow Ping Responses (DD Windows only)
 - `--frpc-config PATH` Add frpc for intranet tunneling (DD Windows only). Parameter can be local filepath or HTTP URL of the configuration file.
@@ -486,7 +492,7 @@ bash reinstall.sh windows \
 
 - `--username USERNAME` Set Username
 - `--password PASSWORD` Set Password
-- `--rdp-port PORT` Change RDP port
+- `--rdp-port PORT` Change RDP port, this fork defaults to 35389, pass 3389 for the native Windows port
 - `--ssh-port PORT` Change SSH port (for log observation during installation only)
 - `--web-port PORT` Change Web port (for log observation during installation only)
 - `--allow-ping` Configure Windows Firewall to Allow Ping Responses

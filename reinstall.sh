@@ -5289,7 +5289,11 @@ info 'info'
 echo "$distro $releasever"
 
 ssh_port=${ssh_port:-22}
-rdp_port=${rdp_port:-3389}
+# 本 fork 默认不用 3389：公网裸奔 3389 会被扫描器狂撞 administrator，
+# 撞满失败次数就触发 Windows 默认的账户锁定策略，机主自己也登不进去
+# 注意 build_cmdline 在本行之前就跑完了，没传 --rdp-port 时 cmdline 上没有 extra_rdp_port，
+# 因此这行只决定下面打印给用户看的值，真正生效的是 trans.sh 里的同名默认值，两处必须一致
+rdp_port=${rdp_port:-35389}
 web_port=${web_port:-80}
 
 if [ "$distro" = netboot.xyz ]; then
@@ -5359,6 +5363,9 @@ elif [ "$distro" = dd ]; then
         echo "Public Key: [Depends on image]"
         echo "Password: [Depends on image]"
         echo "SSH Port: [Depends on image]"
+        # DD windows 镜像时也会改 rdp 端口，这里不打印的话用户不知道往哪连
+        # 此处无法判断镜像是不是 windows，因此加括号说明
+        echo "RDP Port: $rdp_port [Windows image only]"
     fi
 
 else

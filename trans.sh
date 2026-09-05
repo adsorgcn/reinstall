@@ -535,7 +535,9 @@ extract_env_from_cmdline() {
         username=${username:-root}
     fi
     ssh_port=${ssh_port:-22}
-    rdp_port=${rdp_port:-3389}
+    # 本 fork 默认不用 3389，理由见 reinstall.sh 同名变量的注释
+    # 真正生效的就是这一行（没传 --rdp-port 时 cmdline 上没有 extra_rdp_port），改回 3389 会静默退回原生端口
+    rdp_port=${rdp_port:-35389}
     web_port=${web_port:-80}
 }
 

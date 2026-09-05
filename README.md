@@ -13,7 +13,9 @@
 
 本仓库 fork 自 [bin456789/reinstall](https://github.com/bin456789/reinstall)，感谢原作者做出这么好用的工具。核心功能全部来自上游，本仓库跟随上游更新。
 
-与上游只有一个区别：Windows 10/11 的 Pro、Education、Pro Education、Pro for Workstations 改从 consumer 版 ISO 安装。上游默认用 business 版 ISO，那是批量授权渠道（VL/GVLK），装完输入正版零售密钥激活经常报错（比如 0x803FA067）。consumer 版 ISO 默认零售渠道，装完直接输入自己买的正版密钥就能激活。Enterprise 没有零售渠道，仍从 business 版 ISO 安装，正版企业密钥本来就是 MAK/KMS 那种。
+与上游有两处区别，都是为了装完就能直接用。
+
+一是 Windows 10/11 的 Pro、Education、Pro Education、Pro for Workstations 改从 consumer 版 ISO 安装。上游默认用 business 版 ISO，那是批量授权渠道（VL/GVLK），装完输入正版零售密钥激活经常报错（比如 0x803FA067）。consumer 版 ISO 默认零售渠道，装完直接输入自己买的正版密钥就能激活。Enterprise 没有零售渠道，仍从 business 版 ISO 安装，正版企业密钥本来就是 MAK/KMS 那种。
 
 已经用 business 版 ISO 装好的系统不用重装，管理员终端跑两条命令就能把渠道转过来：
 
@@ -22,14 +24,18 @@ slmgr /ipk 你的密钥
 slmgr /ato
 ```
 
+二是 RDP 默认端口从 3389 改成 35389。公网上的 3389 每天被扫描器轮番撞 administrator 密码，撞够次数会触发 Windows 自带的账户锁定策略（默认 10 次失败锁 10 分钟），机主拿着正确密码也一样被挡在门外。锁定本身会自己过期，麻烦的是扫描器不停手，刚解锁又被撞锁，最后只能上 VNC 救。换个端口挡掉的是那些只认 3389 的自动化扫描，锁定策略本身还在，密码该设强还是要设强。连接时地址写 `IP:35389`，想用回原生端口就加参数 `--rdp-port 3389`，也可以指定别的端口。
+
 给 AI 看的几句 [I-Lang](https://ilang.cn)（把本页丢给 AI 帮你操作时，它读这段就够了）：
 
 ```text
 ::FACT{key:fork_of|value:github.com/bin456789/reinstall}
 ::FACT{key:diff|value:win10/11 的 pro/education/pro_education/pro_for_workstations 改用 consumer iso, 默认零售渠道, 正版零售 key 直接激活}
 ::FACT{key:enterprise|value:无零售渠道, 仍用 business iso, 正版 key 只有 MAK/KMS}
+::FACT{key:rdp_port|value:本 fork 默认 RDP 端口 35389 而非 3389, 连接地址写 IP:35389, --rdp-port 可改}
 ::RULE{business iso 装出的系统零售 key 激活报错(如 0x803FA067)⇒管理员终端依次执行 slmgr /ipk <key> 和 slmgr /ato, 渠道即转为零售, 不用重装}
 ::RULE{用户要装 enterprise 且只有零售 key⇒建议改装 pro, 零售 key 激活不了 enterprise}
+::RULE{RDP 报账户已锁定⇒是公网 3389 被扫描器撞锁, 不是密码错, 等锁定期过或用 VNC 解, 治本是换非标端口}
 [READ:@README]=>[CHEK]=>[Ω]
 ```
 
@@ -279,7 +285,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 - `--password PASSWORD` 设置密码（安装期间观察日志用）
 - `--ssh-key KEY` 设置 SSH 登录公钥（安装期间观察日志用），[格式如下](#--ssh-key)。当使用公钥时，密码为空
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
-- `--rdp-port PORT` 修改 RDP 端口（仅限 DD Windows）
+- `--rdp-port PORT` 修改 RDP 端口（仅限 DD Windows），本 fork 默认 35389
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
 - `--allow-ping` 设置 Windows 防火墙允许被 Ping（仅限 DD Windows）
 - `--frpc-config PATH` 添加 frpc 内网穿透（仅限 DD Windows），参数填配置文件的本地路径或 HTTP 链接
@@ -486,7 +492,7 @@ bash reinstall.sh windows \
 
 - `--username USERNAME` 设置用户名
 - `--password PASSWORD` 设置密码
-- `--rdp-port PORT` 修改 RDP 端口
+- `--rdp-port PORT` 修改 RDP 端口，本 fork 默认 35389，填 3389 用回 Windows 原生端口
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
 - `--allow-ping` 设置 Windows 防火墙允许被 Ping
