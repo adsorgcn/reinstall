@@ -49,6 +49,8 @@ while true; do
 
     old_state=$new_state
 
+    echo "Waiting for the NICs to be stable (${stable_count}s/10s)..."
+
     # 稳定 10 秒后退出循环
     if $has_eth && [ "$stable_count" -ge 10 ]; then
         break

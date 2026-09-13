@@ -14,6 +14,10 @@ Before=network.target
 
 [Service]
 Type=oneshot
+
+StandardOutput=journal+console
+StandardError=journal+console
+
 ExecStart=/usr/bin/env bash /fix-eth-name.sh
 ExecStart=/usr/bin/env rm -f /fix-eth-name.sh
 ExecStart=/usr/bin/env rm -f /etc/systemd/system/fix-eth-name.service

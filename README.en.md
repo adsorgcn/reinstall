@@ -7,7 +7,9 @@
 [![Lines of Code](https://aschey.tech/tokei/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/aschey/vercel-tokei)
 <!-- [![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/XAMPPRocky/tokei_rs) -->
 
-One-Click system reinstallation script for VPS [中文](README.md)
+<a href="https://trendshift.io/repositories/14732"><img src="https://trendshift.io/api/badge/repositories/14732" alt="bin456789%2Freinstall | Trendshift" width="250" height="55"/></a>
+
+One-Click OS reinstallation script for VPS [中文](README.md)
 
 ## About this fork
 
@@ -41,8 +43,8 @@ A few lines of [I-Lang](https://ilang.ai) for AI agents (if you paste this page 
 
 ## Introduction
 
-- One-click reinstallation to Linux: Supports 19 common distributions.
-- One-click reinstallation to Windows: Uses the official original ISO instead of custom images. The script can automatically fetch the ISO link and installs public cloud drivers like `VirtIO`.
+- One-click reinstallation to Linux: Supports 20 common distributions.
+- One-click reinstallation to Windows: Uses the official original ISO instead of custom images. Supports automatically fetch the ISO link and installs public cloud drivers like `VirtIO`.
 - Supports reinstallation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
 - Automatically configures IP and intelligently sets it as static or dynamic. Supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `IPv4/IPv6 on different NIC`
 - Specially optimized for low-spec servers, requires less memory than the official netboot
@@ -79,8 +81,8 @@ The system requirements for the target system are as follows:
 | System                                                                                                                                                                                                                                                                                                                                                                 | Version                               | Memory    | Disk             |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ---------------- |
 | <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.21, 3.22, 3.23, 3.24                | 256 MB    | 1 GB             |
-| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9, 10, 11, 12, 13                     | 256 MB    | 1 ~ 1.5 GB ^     |
-| <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^     |
+| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9 ELTS - 11 ELTS, 12, 13              | 256 MB    | 1 ~ 1.5 GB ^     |
+| <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | Last-Snapshot, Rolling                | 256 MB    | 1 ~ 1.5 GB ^     |
 | <img width="16" height="16" src="https://documentation.ubuntu.com/server/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                                                | 18.04 LTS - 26.04 LTS                 | 512 MB \* | 2 GB             |
 | <img width="16" height="16" src="https://img.alicdn.com/imgextra/i1/O1CN01oJnJZg1yK4RzI4Rx2_!!6000000006559-2-tps-118-118.png" /> Anolis                                                                                                                                                                                                                               | 7, 8, 23                              | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RHEL &nbsp;<img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> AlmaLinux &nbsp;<img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp;<img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9, 10                              | 512 MB \* | 5 GB             |
@@ -90,10 +92,10 @@ The system requirements for the target system are as follows:
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS                 | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 16.0, Tumbleweed (Rolling)       | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://nixos.org/favicon.svg" /> NixOS                                                                                                                                                                                                                                                                                               | 26.05                                 | 512 MB    | 5 GB             |
-| <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | Rolling                               | 512 MB    | 5 GB             |
+| <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch Linux / Arch Linux ARM                                                                                                                                                                                                                                                              | Rolling                               | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | Rolling                               | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://aosc.io/distros/aosc-os.svg" /> AOSC OS                                                                                                                                                                                                                                                                                       | Rolling                               | 512 MB    | 5 GB             |
-| <img width="16" height="16" src="https://www.fnnas.com/favicon.ico" /> fnOS &nbsp;<img width="16" height="16" src="https://fygonas.com/favicon.ico" /> FygoOS                                                                                                                                                                                                          | 1                                     | 512 MB    | 8 GB             |
+| <img width="16" height="16" src="https://www.fnnas.com/favicon.ico" /> fnOS &nbsp;<img width="16" height="16" src="https://fygonas.com/favicon.ico" /> FygoOS                                                                                                                                                                                                          | 1                                     | 512 MB    | 10 GB            |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | Any                                   | 512 MB    | Depends on image |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 - 2012 R2) | 512 MB    | 25 GB            |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | 10, 11 (Server 2016 - 2025)           | 1 GB      | 25 GB            |
@@ -184,6 +186,7 @@ certutil -urlcache -f -split https://www.ghproxy.cc/https://raw.githubuserconten
 - When installing Red Hat, you must provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>. You can also install `qcow2` of other RHEL-based OS, such as `Alibaba Cloud Linux` and `TencentOS Server`.
 - After reinstallation, if you need to change the SSH port or switch to key-based login, make sure to also modify the files inside `/etc/ssh/sshd_config.d/`.
 - To ensure a faster reinstall, the new system will not be updated during the process. Please update the system manually after reinstallation.
+- The username, password, and key configured during the installation of fnOS/FygoOS are only used to log in via SSH to view logs during installation, and will not be applied to the new system. After installation, you need to go to the admin panel at <http://IP:5666> to create a user and enable SSH.
 
 ```bash
 bash reinstall.sh anolis      7|8|23
@@ -200,8 +203,8 @@ bash reinstall.sh anolis      7|8|23
                   opensuse    16.0|tumbleweed
                   openeuler   20.03|22.03|24.03
                   alpine      3.21|3.22|3.23|3.24
+                  kali        last-snapshot|rolling
                   ubuntu      18.04|20.04|22.04|24.04|26.04 [--minimal]
-                  kali
                   arch
                   gentoo
                   aosc
@@ -216,6 +219,7 @@ bash reinstall.sh anolis      7|8|23
 - `--ssh-port PORT` Change the SSH port
 - `--web-port PORT` Change the Web port (for log observation during installation only)
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
+- `--no-cloud-kernel` Avoid using cloud kernel to prevent black or glitch screens on certain machines; applicable to Debian, Ubuntu, and Alpine.
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Prevent reboot after installation completes, allowing SSH login to modify system content; the system is mounted at `/target` for Debian/Kali and `/os` for other distros.
 
@@ -395,7 +399,116 @@ bash reinstall.sh windows \
 ```
 
 <details>
-<summary> --lang list </summary>
+<summary>--image-name list</summary>
+
+The following editions support automatic ISO search. For other editions, please use Method 2 to manually specify the ISO link for installation.
+
+```text
+Windows Vista Starter
+Windows Vista HomeBasic
+Windows Vista HomePremium
+Windows Vista Business
+Windows Vista Ultimate
+Windows Vista Enterprise
+
+Windows 7 Starter
+Windows 7 HomeBasic
+Windows 7 HomePremium
+Windows 7 Professional
+Windows 7 Ultimate
+Windows 7 Enterprise
+
+Windows 8
+Windows 8 Pro
+Windows 8 Enterprise
+
+Windows 8.1
+Windows 8.1 Pro
+Windows 8.1 Enterprise
+
+Windows 10 Home
+Windows 10 Home Single Language
+Windows 10 Pro
+Windows 10 Pro Education
+Windows 10 Pro for Workstations
+Windows 10 Education
+Windows 10 Enterprise
+Windows 10 Enterprise 2015 LTSB
+Windows 10 Enterprise 2016 LTSB
+Windows 10 Enterprise LTSC 2019
+Windows 10 Enterprise LTSC 2021
+Windows 10 IoT Enterprise
+Windows 10 IoT Enterprise 2015 LTSB
+Windows 10 IoT Enterprise 2016 LTSB
+Windows 10 IoT Enterprise LTSC 2019
+Windows 10 IoT Enterprise LTSC 2021
+
+Windows 11 Home
+Windows 11 Home Single Language
+Windows 11 Pro
+Windows 11 Pro Education
+Windows 11 Pro for Workstations
+Windows 11 Education
+Windows 11 Enterprise
+Windows 11 Enterprise LTSC 2024
+Windows 11 IoT Enterprise
+Windows 11 IoT Enterprise LTSC 2024
+Windows 11 IoT Enterprise Subscription
+Windows 11 IoT Enterprise Subscription LTSC 2024
+
+Windows Longhorn ServerWeb
+Windows Longhorn ServerWebCore
+Windows Longhorn ServerStandard
+Windows Longhorn ServerStandardCore
+Windows Longhorn ServerEnterprise
+Windows Longhorn ServerEnterpriseCore
+Windows Longhorn ServerDatacenter
+Windows Longhorn ServerDatacenterCore
+
+Windows Server 2008 R2 ServerWeb
+Windows Server 2008 R2 ServerWebCore
+Windows Server 2008 R2 ServerStandard
+Windows Server 2008 R2 ServerStandardCore
+Windows Server 2008 R2 ServerEnterprise
+Windows Server 2008 R2 ServerEnterpriseCore
+Windows Server 2008 R2 ServerDatacenter
+Windows Server 2008 R2 ServerDatacenterCore
+
+Windows Server 2012 ServerStandard
+Windows Server 2012 ServerStandardCore
+Windows Server 2012 ServerDatacenter
+Windows Server 2012 ServerDatacenterCore
+
+Windows Server 2012 R2 ServerStandard
+Windows Server 2012 R2 ServerStandardCore
+Windows Server 2012 R2 ServerDatacenter
+Windows Server 2012 R2 ServerDatacenterCore
+
+Windows Server 2016 ServerStandard
+Windows Server 2016 ServerStandardCore
+Windows Server 2016 ServerDatacenter
+Windows Server 2016 ServerDatacenterCore
+
+Windows Server 2019 ServerStandard
+Windows Server 2019 ServerStandardCore
+Windows Server 2019 ServerDatacenter
+Windows Server 2019 ServerDatacenterCore
+
+Windows Server 2022 ServerStandard
+Windows Server 2022 ServerStandardCore
+Windows Server 2022 ServerDatacenter
+Windows Server 2022 ServerDatacenterCore
+
+Windows Server 2025 ServerStandard
+Windows Server 2025 ServerStandardCore
+Windows Server 2025 ServerDatacenter
+Windows Server 2025 ServerDatacenterCore
+```
+
+</details>
+
+<details>
+<summary>--lang list</summary>
 
 Supports these three language format codes. Case insensitive.
 
@@ -466,7 +579,6 @@ bash reinstall.sh windows \
 <summary>The following website provides ISO links.</summary>
 
 - General
-  - <https://msdl.gravesoft.dev>
   - <https://ntriver.org/download-windows-office> (Recommended, ISOs are up to date)
   - <https://massgrave.dev/genuine-installation-media> (Recommended, ISOs are up to date)
   - <https://next.itellyou.cn>
@@ -499,15 +611,16 @@ bash reinstall.sh windows \
 - `--add-driver INF_OR_DIR` Add additional driver, specifying .inf path, or the folder contains .inf file.
   - The driver must be downloaded to current system first.
   - This parameter can be set multiple times to add different driver.
+- `--no-auto-drivers` Prevent the script automatically download drivers. You need to use `--add-driver` to add the missing drivers.
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Allow SSH connections for modifying `boot.wim`, `install.wim` or other contents before rebooting into the official Windows installation program, with the disk mounted at `/os`.
 
-#### The following drivers will automatic download and install as needed, without the need for manual addition
+#### The following drivers will be downloaded and installed automatically as needed; use `--no-auto-drivers` to disable this feature
 
-- VirtIO ([Community][virtio-virtio], [Alibaba Cloud][virtio-aliyun], [Tencent Cloud][virtio-qcloud], [GCP][virtio-gcp])
+- VirtIO ([Community][virtio-virtio], [Alibaba Cloud][virtio-aliyun], [Tencent Cloud][virtio-qcloud], [GCP][virtio-gcp], [GCP (Win7/2008 SHA-1)][virtio-gcp-win6.1sha1]))
 - XEN ([~~Community~~][xen-xen] (unsigned), [Citrix][xen-citrix], [AWS][xen-aws])
-- AWS ([ENA Network Adapter][aws-ena], [NVME Storage Controller][aws-nvme])
+- AWS ([ENA Network Adapter][aws-ena], [NVMe Storage Controller][aws-nvme], [VMClock Virtual Clock][aws-vmclock], [PCI Serial][aws-pciserial]))
 - GCP ([gVNIC Network Adapter][gcp-gvnic], [GGA Display Adapter][gcp-gga])
 - Azure ([MANA Network Adapter][azure-mana])
 - Intel (VMD Storage Controller: [11th Gen Core][intel-vmd-gen11], [12th-15th Gen Core][intel-vmd-gen12-to-gen15], [Core Ultra 3][intel-vmd-ultra3], Network Adapter: [7][intel-nic-7], [8.x][intel-nic-8.1], [10][intel-nic-10], [11][intel-nic-11], [2008 R2][intel-nic-7], [2012][intel-nic-2012], [2012 R2][intel-nic-2012-r2], [2016][intel-nic-2016], [2019][intel-nic-2019], [2022][intel-nic-2022], [2025][intel-nic-2025])
@@ -515,14 +628,17 @@ bash reinstall.sh windows \
 [virtio-virtio]: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/
 [virtio-aliyun]: https://www.alibabacloud.com/help/ecs/user-guide/install-the-virtio-driver-1
 [virtio-qcloud]: https://cloud.tencent.com/document/product/213/17815#b84b2032-752c-43c4-a509-73530b8f82ff
-[virtio-gcp]: https://console.cloud.google.com/storage/browser/gce-windows-drivers-public
-[xen-xen]: https://xenproject.org/resources/downloads/
+[virtio-gcp]: https://packages.cloud.google.com/yuck/repos/google-compute-engine-stable/index
+[virtio-gcp-win6.1sha1]: https://console.cloud.google.com/storage/browser/gce-windows-drivers-public/win6.1sha1
+[xen-xen]: https://xenbits.xenproject.org/pvdrivers/win/
 [xen-aws]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html
 [xen-citrix]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade
 [aws-ena]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html
 [aws-nvme]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html
-[gcp-gvnic]: https://cloud.google.com/compute/docs/networking/using-gvnic
-[gcp-gga]: https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display
+[aws-vmclock]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/other-windows-device-drivers.html
+[aws-pciserial]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/migrating-latest-types.html#install-serial-port-bare-metal
+[gcp-gvnic]: https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-gvnic-stable/index
+[gcp-gga]: https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-gga-stable/index
 [azure-mana]: https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows
 [intel-vmd-gen11]: https://www.intel.com/content/www/us/en/download/849933/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-12th-to-13th-gen-platforms.html
 [intel-vmd-gen12-to-gen15]: https://www.intel.com/content/www/us/en/download/849936/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-12th-to-15th-gen-platforms.html
@@ -544,15 +660,6 @@ An ISO usually contains multiple system editions, such as Home and Pro. Therefor
 
 You can use tools like DISM, DISM++, or Wimlib to query the image names included in the ISO.
 
-Commonly used image names include:
-
-```text
-Windows 7 Ultimate
-Windows 11 Pro
-Windows 11 Enterprise LTSC 2024
-Windows Server 2025 SERVERDATACENTER
-```
-
 #### How to Use [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) to Query the Image Names Included in the ISO
 
 Open File menu > Open Image File, select the iso to be installed to get the image name (full system name), and all available image names are installable.
@@ -560,15 +667,15 @@ Open File menu > Open Image File, select the iso to be installed to get the imag
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
 > [!WARNING]
-> Vista (Server 2008) and 32-bit systems may lack drivers.
+> Vista, Server 2008 and 32-bit systems may lack drivers.
 
 > [!WARNING]
 >
-> For Windows 7 (Server 2008 R2) installation:
+> For Vista, 7, Server 2008, Server 2008 R2 installation:
 >
 > 1. EFI-boot machines must enable CSM.
 >
-> 2. On Hyper-V (Azure), select Generation 1 VM. <https://learn.microsoft.com/windows-server/virtualization/hyper-v/plan/should-i-create-a-generation-1-or-2-virtual-machine-in-hyper-v>
+> 2. On Hyper-V / Azure, select Generation 1 VM.
 
 > [!WARNING]
 >
@@ -619,8 +726,8 @@ bash reinstall.sh reset
 - `--ssh-key "ssh-ed25519 ..."`
 - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
 - `--ssh-key http://path/to/public_key`
-- `--ssh-key github:your_username`
-- `--ssh-key gitlab:your_username`
+- `--ssh-key github:your_username` or `--ssh-key gh:your_username`
+- `--ssh-key gitlab:your_username` or `--ssh-key gl:your_username`
 - `--ssh-key /path/to/public_key`
 - `--ssh-key C:\path\to\public_key`
 

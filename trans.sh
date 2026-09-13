@@ -263,6 +263,11 @@ download_via_browser() {
     create_alpine_rootfs "$os_dir" true
     apk add --root "$os_dir" chromium-headless-shell npm
 
+    # 添加 swap
+    # 否则 512M 内存会报错 browserContext.newPage: Target crashed
+    local swapfile=$os_dir/swapfile
+    create_swap_if_ram_less_than 1024 "$swapfile"
+
     # 安装 playwright
     # shellcheck disable=SC2046
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
@@ -278,6 +283,12 @@ download_via_browser() {
     wget "$confhome/download-via-browser.js" -O "$os_dir/work/download-via-browser.js"
     retry 5 chroot "$os_dir" node /work/download-via-browser.js "$url" "/work/download_file"
     cp "$os_dir/work/download_file" "$path"
+
+    # 删除 swap
+    if [ -f "$swapfile" ]; then
+        swapoff "$swapfile"
+        rm -f "$swapfile"
+    fi
 
     # 清理
     remove_alpine_rootfs "$os_dir"
@@ -350,17 +361,20 @@ download() {
 update_part() {
     sleep 1
     sync
+    sleep 1
 
     # partprobe
     # 有分区挂载中会报 Resource busy 错误
     if is_have_cmd partprobe; then
         partprobe /dev/$xda 2>/dev/null || true
+        sleep 1
     fi
 
     # partx
     # https://access.redhat.com/solutions/199573
     if is_have_cmd partx; then
         partx -u /dev/$xda
+        sleep 1
     fi
 
     # mdev
@@ -369,6 +383,7 @@ update_part() {
     # 因此要先停止 mdev 服务
     # 还要删除 /dev/$xda*?
     ensure_service_stopped mdev
+    sleep 1
     # 即使停止了 mdev，有时也会报 Directory not empty，因此添加 retry
     retry 5 rm -rf /dev/disk/*
 
@@ -376,6 +391,7 @@ update_part() {
     # modprobe: can't change directory to '/lib/modules': No such file or directory
     # 因此强制不显示上面的提示
     mdev -sf 2>/dev/null
+    sleep 1
     ensure_service_started mdev 2>/dev/null
     sleep 1
 }
@@ -414,13 +430,18 @@ setup_nginx() {
 
 setup_websocketd() {
     apk add websocketd
-    wget $confhome/logviewer.html -O /tmp/index.html
     apk add coreutils
+
+    mkdir -p /tmp/web
+    echo 'Wrong Path' >/tmp/web/index.html
+    # shellcheck disable=SC2154
+    wget $confhome/logviewer.html -O /tmp/web$web_path
 
     killall -q websocketd || true
     # websocketd 遇到 \n 才推送，因此要转换 \r 为 \n
-    websocketd --port "$web_port" --loglevel=fatal --staticdir=/tmp \
-        stdbuf -oL -eL sh -c "tail -fn+0 /reinstall.log | tr '\r' '\n' | grep -Fiv -e password -e token" &
+    websocketd --port "$web_port" --loglevel=fatal --staticdir=/tmp/web \
+        stdbuf -oL -eL \
+        sh -c "if [ \"\$PATH_INFO\" = \"$web_path\" ]; then tail -fn+0 /reinstall.log | tr '\r' '\n' | grep -Fiv -e password -e token; fi" &
 }
 
 get_approximate_ram_size() {
@@ -659,13 +680,6 @@ is_virt_contains() {
 }
 
 is_dmi_contains() {
-    # Manufacturer: Alibaba Cloud
-    # Manufacturer: Tencent Cloud
-    # Manufacturer: Huawei Cloud
-    # Asset Tag: OracleCloud.com
-    # Vendor: Amazon EC2
-    # Manufacturer: Amazon EC2
-    # Asset Tag: Amazon EC2
     cache_dmi_and_virt
     echo "$_dmi" | grep -Eiwq "$1"
 }
@@ -1601,11 +1615,16 @@ install_alpine() {
         rc-update add acpid
     fi
 
-    # 如果是 vm 就用 virt 内核
-    if is_virt; then
-        kernel_flavor="virt"
+    # 内核
+    # shellcheck disable=SC2154
+    if [ "$no_cloud_kernel" = 1 ]; then
+        kernel_flavor=lts
     else
-        kernel_flavor="lts"
+        if is_virt; then
+            kernel_flavor=virt
+        else
+            kernel_flavor=lts
+        fi
     fi
 
     # 重置为官方仓库配置
@@ -1719,8 +1738,12 @@ install_alpine() {
         chroot /os apk add frp
         # chroot rc-update add 默认添加到 sysinit
         # 但不加 chroot 默认添加到 default
-        chroot /os rc-update add frpc boot
-        cp -f /configs/frpc.* /os/etc/frp/
+        chroot /os rc-update add frpc default
+
+        # 固定为 toml
+        # 这样就不用在 /etc/init.d/frpc drop-in 修改 cfgfile
+        cp -f /configs/frpc.* /os/etc/frp/frpc.toml
+        chmod 600 /os/etc/frp/frpc.toml
     fi
 
     # setup-disk 会自动选择固件，但不包括微码？
@@ -2004,6 +2027,7 @@ $(
             fi
             if is_need_set_ssh_keys; then
                 echo 'settings.PasswordAuthentication = false;'
+                echo 'settings.KbdInteractiveAuthentication = false;'
             fi
             if [ "$username" = root ] && ! is_need_set_ssh_keys; then
                 echo 'settings.PermitRootLogin = "yes";'
@@ -2032,11 +2056,11 @@ $(cat /configs/frpc.* | add_space 4)
 EOF
             else
                 # 直接使用原始文件
-                (
-                    umask 077
-                    cp /configs/frpc.* /os/etc/nixos/
-                )
+                cp /configs/frpc.* /os/etc/nixos/
+                chmod 600 /os/etc/nixos/frpc.*
                 ext=$(basename /configs/frpc.* | awk -F. '{print $NF}')
+                # 默认已经开了 DynamicUser = true;
+                # https://github.com/NixOS/nixpkgs/blob/nixos-26.05/nixos/modules/services/networking/frp.nix
                 cat <<EOF
 services.frp = {
   enable = true;
@@ -2150,8 +2174,13 @@ EOF
 add_systemd_service() {
     local os_dir=$1
     local service_name=$2
+    local service_file=$3
 
-    download "$confhome/$service_name.service" "$os_dir/etc/systemd/system/$service_name.service"
+    if [ -n "$service_file" ]; then
+        cp "$service_file" "$os_dir/etc/systemd/system/$service_name.service"
+    else
+        download "$confhome/$service_name.service" "$os_dir/etc/systemd/system/$service_name.service"
+    fi
     chroot "$os_dir" systemctl enable "$service_name.service"
 
     # aosc 首次开机会执行 preset-all
@@ -2198,11 +2227,27 @@ add_frpc_systemd_service_if_need() {
         rm -f "$os_dir/frpc.tar.gz"
         chmod a+x "$os_dir/usr/local/bin/frpc"
 
-        # frpc conf
-        cp -f /configs/frpc.* "$os_dir/usr/local/etc/frpc/"
+        # frpc toml
+        cp -f /configs/frpc.* "$os_dir/usr/local/etc/frpc/frpc.toml"
+        download "$confhome/frpc.service" /tmp/frpc.service
+        if [ "$(chroot $os_dir systemctl --version | head -1 | awk '{print $2}')" -ge 247 ]; then
+            # 新版本 systemd
+            sed -i 's/^\[X-Service-New\]$/[Service]/' /tmp/frpc.service
+            chroot "$os_dir" chown root:root /usr/local/etc/frpc/frpc.toml
+            chroot "$os_dir" chmod 600 /usr/local/etc/frpc/frpc.toml
+        else
+            # 旧版本 systemd
+            sed -i 's/^\[X-Service-Old\]$/[Service]/' /tmp/frpc.service
+            chroot "$os_dir" useradd --system --no-create-home \
+                --home-dir /nonexistent \
+                --shell /sbin/nologin \
+                frpc
+            chroot "$os_dir" chown root:frpc /usr/local/etc/frpc/frpc.toml
+            chroot "$os_dir" chmod 640 /usr/local/etc/frpc/frpc.toml
+        fi
 
         # 添加服务
-        add_systemd_service "$os_dir" frpc
+        add_systemd_service "$os_dir" frpc /tmp/frpc.service
     fi
 }
 
@@ -2888,8 +2933,8 @@ create_part() {
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
         if ! size_bytes=$(get_link_file_size "$iso"); then
-            # 默认值，目前最大的 iso 小于 8g
-            size_bytes=$((8 * 1024 * 1024 * 1024))
+            # 默认值，目前最大的 iso 小于 10g
+            size_bytes=$((10 * 1024 * 1024 * 1024))
         fi
 
         # 按iso容量计算分区大小
@@ -4421,7 +4466,7 @@ set_ssh_keys_and_del_password() {
     fi
 }
 
-_is_ssh_kv_effective() {
+is_ssh_kv_effective() {
     local os_dir=$1
     local key=$2
     local value=$3
@@ -4436,48 +4481,33 @@ _is_ssh_kv_effective() {
     fi
 
     # centos 7 / ubuntu 22.04 不支持 -G
+    # -G 只检测配置文件
+    # -T 会检测配置文件、host key
     if res=$(chroot "$os_dir" sshd -G 2>/dev/null || chroot "$os_dir" sshd -T 2>/dev/null); then
         # 删除自己创建的，避免后续权限不准确
         if $we_create_run_sshd_dir; then
             rm -rf "$os_dir/run/sshd"
         fi
-        printf "%s\n" "$res" | grep -Fxiq "$key $value"
+
+        # centos 7 设置 prohibit-password ，sshd -T 会显示成 without-password
+        printf "%s\n" "$res" |
+            sed 's/^permitrootlogin without-password$/permitrootlogin prohibit-password/i' |
+            if [ -n "$value" ]; then
+                grep -F -xiq "$key $value"
+            else
+                # value 为空时，只验证 key 是否存在
+                grep -E -xiq "$key .*"
+            fi
     else
         error_and_exit "Failed to verify sshd config."
     fi
-}
-
-is_ssh_kv_effective() {
-    local os_dir=$1
-    local key=$2
-    local value=$3
-
-    if _is_ssh_kv_effective "$os_dir" "$key" "$value"; then
-        return 0
-    fi
-
-    # centos 7 设置 prohibit-password ，sshd -T 会显示成 without-password
-    if [ "$(echo "$key" | to_lower)" = "permitrootlogin" ] && {
-        [ "$(echo "$value" | to_lower)" = "prohibit-password" ] ||
-            [ "$(echo "$value" | to_lower)" = "without-password" ]
-    }; then
-        if _is_ssh_kv_effective "$os_dir" "permitrootlogin" "prohibit-password" ||
-            _is_ssh_kv_effective "$os_dir" "permitrootlogin" "without-password"; then
-            return 0
-        fi
-    fi
-
-    return 1
 }
 
 change_ssh_conf_if_different() {
     local os_dir=$1
     local key=$2
     local value=$3
-    local sub_conf=$4
-    if [ -z "$sub_conf" ]; then
-        sub_conf=$(echo "01-$key.conf" | to_lower)
-    fi
+    local explicit=${4:-false} # 是否需要显式设置
 
     # 有些发行版自带了某些配置，例如
     # ubuntu:
@@ -4488,8 +4518,8 @@ change_ssh_conf_if_different() {
     # cat /etc/ssh/sshd_config.d/9999999gentoo-pam.conf | grep -i PasswordAuthentication
     # PasswordAuthentication no
 
-    # 0. 如果已经有这个配置，则不修改，避免不必要的改动
-    if is_ssh_kv_effective "$os_dir" "$key" "$value"; then
+    # 0. 如果已经有这个配置，且不需要显式设置，则不修改
+    if is_ssh_kv_effective "$os_dir" "$key" "$value" && ! $explicit; then
         return
     fi
 
@@ -4507,7 +4537,7 @@ change_ssh_conf_if_different() {
         { grep -iq "$include_line" $os_dir/etc/ssh/sshd_config ||
             grep -iq "$include_line" $os_dir/usr/etc/ssh/sshd_config; } 2>/dev/null; then
         mkdir -p $os_dir/etc/ssh/sshd_config.d/
-        echo "$key $value" >"$os_dir/etc/ssh/sshd_config.d/$sub_conf"
+        echo "$key $value" >"$os_dir/etc/ssh/sshd_config.d/01-$(echo "$key" | to_lower).conf"
     else
         # 3. 写入 sshd_config
         #    如果 sshd_config 存在此 key (无论是否已注释)，则替换，包括删除注释
@@ -4535,6 +4565,34 @@ change_ssh_conf_for_key_login() {
     if [ "$username" = root ]; then
         change_ssh_conf_if_different "$os_dir" PermitRootLogin prohibit-password
     fi
+
+    # sshd -G/-T 有 ChallengeResponseAuthentication 说明是旧版 sshd
+    # 才需要设置 ChallengeResponseAuthentication no
+
+    # OpenSSH 8.6 和以下 (包括 el8/debian 11/ubuntu 20.04 等)
+    # KbdInteractiveAuthentication ChallengeResponseAuthentication 可设置成不同的值
+    # 如果没有显式设置 ChallengeResponseAuthentication no
+    # 则 KbdInteractiveAuthentication no 不会生效 (sshd -G/-T 显示 KbdInteractiveAuthentication yes)
+
+    # 因此先 sshd -G/-T 检测有没有 ChallengeResponseAuthentication 这个 key
+    # 只要有就显式设置为 no
+    # 而且要先设置 ChallengeResponseAuthentication 后设置 KbdInteractiveAuthentication
+    # 否则 change_ssh_conf_if_different 设置 KbdInteractiveAuthentication no 时会检测到不生效而报错
+
+    # 用户传进来的 rhel-like 系统可能是支持 ChallengeResponseAuthentication 的旧版本
+    # 因此即使 el8/debian 11/ubuntu 20.04 都 EOL 后也不能删除这里
+    if is_ssh_kv_effective "$os_dir" ChallengeResponseAuthentication; then
+        change_ssh_conf_if_different "$os_dir" ChallengeResponseAuthentication no true
+    fi
+
+    # PasswordAuthentication no
+    # KbdInteractiveAuthentication yes (默认是 yes)
+    # 这种情况可以用密码登录
+    # ssh -o PreferredAuthentications=keyboard-interactive user@ip
+
+    # 多数发行版都会在 sshd_config 里设置成 no
+    # 但 opensuse 16 没有
+    change_ssh_conf_if_different "$os_dir" KbdInteractiveAuthentication no
 }
 
 change_ssh_conf_for_password_login() {
@@ -5335,8 +5393,18 @@ install_qcow_by_copy() {
                 fi
                 chroot_dnf install efibootmgr grub2-efi-$arch shim-$arch
             fi
-            # openeuler arm 25.09 云镜像里面的 grubaa64.efi 是用于 mbr 分区表，$root 是 hd0,msdos1
-            # 因此要重新下载 $root 是 hd0,gpt1 的 grubaa64.efi
+
+            # openeuler arm 云镜像里面的 grubaa64.efi 有问题
+
+            # 1. 会自动进入 rescue 模式
+            # set 命令输出如下
+            # fw_path='(hd0,gpt1)//EFI/openEuler'
+            # prefix='(hd0,msdos1)/efi/EFI/openEuler'
+            # root='hd0,msdos1'
+            # 将 msdos1 改成 gpt1 后才能加载 normal 正常引导
+
+            # 2. 不是来自 grub2-efi-aa64 rpm
+            # 因此重新下载 $root 是 hd0,gpt1 的 grubaa64.efi
             if $need_reinstall_grub_efi; then
                 chroot_dnf reinstall grub2-efi-$arch
             fi
@@ -5396,57 +5464,76 @@ EOF
             # sysconfig
             info 'sysconfig'
 
-            # anolis/openeuler/opencloudos 可能要安装 cloud-init
-            # opencloudos 无法使用 chroot $os_dir command -v xxx
-            # chroot: failed to run command ‘command’: No such file or directory
-            # 注意还要禁用 cloud-init 服务
-            if ! is_have_cmd_on_disk $os_dir cloud-init; then
-                chroot_dnf install cloud-init
+            # 使用目标系统内的 cloud-init
+            # 保留这个，防止未来新版本 cloud-init 不支持 sysconfig
+            if false; then
+                # anolis/openeuler/opencloudos 可能要安装 cloud-init
+                # opencloudos 无法使用 chroot $os_dir command -v xxx
+                # chroot: failed to run command ‘command’: No such file or directory
+                # 注意还要禁用 cloud-init 服务
+                if ! is_have_cmd_on_disk $os_dir cloud-init; then
+                    chroot_dnf install cloud-init
+                fi
+
+                # cloud-init 路径
+                # /usr/lib/python2.7/site-packages/cloudinit/net/
+                # /usr/lib/python3/dist-packages/cloudinit/net/
+                # /usr/lib/python3.9/site-packages/cloudinit/net/
+
+                # el7 不认识 static6，但可改成 static，作用相同
+                recognize_static6=true
+                if ls $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py 2>/dev/null &&
+                    ! grep -q static6 $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py; then
+                    recognize_static6=false
+                fi
+
+                # cloud-init 20.1 才支持以下配置
+                # https://cloudinit.readthedocs.io/en/20.4/topics/network-config-format-v1.html#subnet-ip
+                # https://cloudinit.readthedocs.io/en/21.1/topics/network-config-format-v1.html#subnet-ip
+                # ipv6_dhcpv6-stateful: Configure this interface with dhcp6
+                # ipv6_dhcpv6-stateless: Configure this interface with SLAAC and DHCP
+                # ipv6_slaac: Configure address with SLAAC
+
+                # el7 最新 cloud-init 版本
+                # centos 7         19.4-7.0.5.el7_9.6  backport 了 ipv6_xxx
+                # openeuler 20.03  19.4-15.oe2003sp4   backport 了 ipv6_xxx
+                # anolis 7         19.1.17-1.0.1.an7   没有更新到 centos7 相同版本,也没 backport ipv6_xxx，坑
+
+                # 最好还修改 ifcfg-eth* 的 IPV6_AUTOCONF
+                # 但实测 anolis7 cloud-init dhcp6 不会生成 IPV6_AUTOCONF，因此暂时不管
+                # https://www.redhat.com/zh/blog/configuring-ipv6-rhel-7-8
+                recognize_ipv6_types=true
+                if ls -d $os_dir/usr/lib/python*/*-packages/cloudinit/net/ 2>/dev/null &&
+                    ! grep -qr ipv6_slaac $os_dir/usr/lib/python*/*-packages/cloudinit/net/; then
+                    recognize_ipv6_types=false
+                fi
+
+                # 生成 cloud-init 网络配置
+                create_cloud_init_network_config $os_dir/net.cfg "$recognize_static6" "$recognize_ipv6_types"
+
+                # 转换成目标系统的网络配置
+                chroot $os_dir cloud-init devel net-convert \
+                    -p /net.cfg -k yaml -d out -D rhel -O sysconfig
+                cp $os_dir/out/etc/sysconfig/network-scripts/ifcfg-eth* $os_dir/etc/sysconfig/network-scripts/
+
+                # 清理
+                rm -rf $os_dir/net.cfg $os_dir/out
+            else
+                # 使用 alpine 的 cloud-init
+
+                # 生成 cloud-init 网络配置
+                create_cloud_init_network_config net.cfg
+
+                # 转换成目标系统的网络配置
+                apk add cloud-init-distros
+                cloud-init devel net-convert \
+                    -p /net.cfg -k yaml -d out -D rhel -O sysconfig
+                cp out/etc/sysconfig/network-scripts/ifcfg-eth* $os_dir/etc/sysconfig/network-scripts/
+
+                # 清理
+                rm -rf net.cfg out
+                apk del cloud-init-distros
             fi
-
-            # cloud-init 路径
-            # /usr/lib/python2.7/site-packages/cloudinit/net/
-            # /usr/lib/python3/dist-packages/cloudinit/net/
-            # /usr/lib/python3.9/site-packages/cloudinit/net/
-
-            # el7 不认识 static6，但可改成 static，作用相同
-            recognize_static6=true
-            if ls $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py 2>/dev/null &&
-                ! grep -q static6 $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py; then
-                recognize_static6=false
-            fi
-
-            # cloud-init 20.1 才支持以下配置
-            # https://cloudinit.readthedocs.io/en/20.4/topics/network-config-format-v1.html#subnet-ip
-            # https://cloudinit.readthedocs.io/en/21.1/topics/network-config-format-v1.html#subnet-ip
-            # ipv6_dhcpv6-stateful: Configure this interface with dhcp6
-            # ipv6_dhcpv6-stateless: Configure this interface with SLAAC and DHCP
-            # ipv6_slaac: Configure address with SLAAC
-
-            # el7 最新 cloud-init 版本
-            # centos 7         19.4-7.0.5.el7_9.6  backport 了 ipv6_xxx
-            # openeuler 20.03  19.4-15.oe2003sp4   backport 了 ipv6_xxx
-            # anolis 7         19.1.17-1.0.1.an7   没有更新到 centos7 相同版本,也没 backport ipv6_xxx，坑
-
-            # 最好还修改 ifcfg-eth* 的 IPV6_AUTOCONF
-            # 但实测 anolis7 cloud-init dhcp6 不会生成 IPV6_AUTOCONF，因此暂时不管
-            # https://www.redhat.com/zh/blog/configuring-ipv6-rhel-7-8
-            recognize_ipv6_types=true
-            if ls -d $os_dir/usr/lib/python*/*-packages/cloudinit/net/ 2>/dev/null &&
-                ! grep -qr ipv6_slaac $os_dir/usr/lib/python*/*-packages/cloudinit/net/; then
-                recognize_ipv6_types=false
-            fi
-
-            # 生成 cloud-init 网络配置
-            create_cloud_init_network_config $os_dir/net.cfg "$recognize_static6" "$recognize_ipv6_types"
-
-            # 转换成目标系统的网络配置
-            chroot $os_dir cloud-init devel net-convert \
-                -p /net.cfg -k yaml -d out -D rhel -O sysconfig
-            cp $os_dir/out/etc/sysconfig/network-scripts/ifcfg-eth* $os_dir/etc/sysconfig/network-scripts/
-
-            # 清理
-            rm -rf $os_dir/net.cfg $os_dir/out
 
             # 删除 # Created by cloud-init on instance boot automatically, do not edit.
             # 修正网络配置问题并显示文件
@@ -5657,6 +5744,7 @@ EOF
     # centos/rocky/almalinux/rhel: xfs
     # oracle x86_64:          lvm + xfs
     # oracle aarch64 cloud:   xfs
+    # openeuler x64/arm:      mbr 分区表 + ext4
     # alibaba cloud linux 3:  ext4
 
     is_lvm_image=false
@@ -6314,6 +6402,15 @@ get_cloud_vendor() {
     # busybox blkid 不显示 sr0 的 UUID
     apk add lsblk
 
+    # Manufacturer: Alibaba Cloud
+    # Manufacturer: Tencent Cloud
+    # Manufacturer: Huawei Cloud
+    # Asset Tag: OracleCloud.com
+    # Vendor: Amazon EC2
+    # Manufacturer: Amazon EC2
+    # Asset Tag: Amazon EC2
+    # Asset Tag: HUAWEICLOUD
+
     # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
     # virt-what 可识别厂商 aws google_cloud alibaba_cloud alibaba_cloud-ebm
     if is_dmi_contains "Amazon EC2" || is_virt_contains aws; then
@@ -6322,16 +6419,16 @@ get_cloud_vendor() {
         echo gcp
     elif is_dmi_contains "OracleCloud"; then
         echo oracle
-    elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
-        echo azure
-    elif lsblk -o UUID,LABEL | grep -i 9796-932E | grep -iq config-2; then
-        echo ibm
-    elif is_dmi_contains 'Huawei Cloud'; then
+    elif is_dmi_contains 'HUAWEICLOUD'; then
         echo huawei
     elif is_dmi_contains 'Alibaba Cloud'; then
         echo aliyun
     elif is_dmi_contains 'Tencent Cloud'; then
         echo qcloud
+    elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
+        echo azure
+    elif lsblk -o UUID,LABEL | grep -i 9796-932E | grep -iq config-2; then
+        echo ibm
     fi
 }
 
@@ -6851,6 +6948,14 @@ install_windows() {
         drv=/os/drivers
         mkdir_clear "$drv"
 
+        # 自定义驱动
+        add_driver_custom
+
+        # shellcheck disable=SC2154
+        if [ "$no_auto_drivers" = 1 ]; then
+            return
+        fi
+
         # 这里有坑
         # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
         # 但是 $(get_cloud_vendor) 运行在 subshell 里面
@@ -6932,13 +7037,13 @@ install_windows() {
         # 厂商驱动
         case "$vendor" in
         aws)
-            if is_nt_ver_ge 6.1 && { [ "$arch_wim" = x86_64 ] || [ "$arch_wim" = arm64 ]; }; then
+            if { [ "$arch_wim" = x86_64 ] || [ "$arch_wim" = arm64 ]; }; then
                 add_driver_aws
             fi
             ;;
         azure)
             # inf 不限版本，未测试
-            if [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; then
+            if [ "$arch_wim" = x86_64 ]; then
                 add_driver_azure
             fi
             ;;
@@ -6956,9 +7061,6 @@ install_windows() {
             grep -iq 8086 /sys/class/net/e*/device/vendor; then
             add_driver_intel_nic
         fi
-
-        # 自定义驱动
-        add_driver_custom
     }
 
     add_driver_intel_nic() {
@@ -7127,40 +7229,72 @@ EOF
     }
 
     # aws nitro
+    # https://s3.amazonaws.com/ec2-windows-drivers-downloads/
+    # https://s3.cn-north-1.amazonaws.com.cn/ec2-windows-drivers-downloads-cn/
     # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
     # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
+    # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/other-windows-device-drivers.html
     add_driver_aws() {
         info "Add drivers: AWS"
 
-        # 未打补丁的 win7 无法使用 sha256 签名的驱动
-        nvme_ver=$(
-            case "$nt_ver" in
-            6.1) echo 1.3.2 ;; # sha1 签名
-            6.2 | 6.3) echo 1.5.1 ;;
-            *) echo Latest ;;
-            esac
-        )
+        download_and_cp_aws_driver() {
+            local driver_dir=$1
+            local file=$2
+            local ver=$3
 
-        ena_ver=$(
-            case "$nt_ver" in
-            6.1) $support_sha256 && echo 2.2.3 || echo 2.1.4 ;;
-            6.2 | 6.3) echo 2.6.0 ;;
-            *) echo Latest ;;
-            esac
-        )
+            local arch_dir
+            [ "$arch_wim" = arm64 ] && arch_dir=/ARM64 || arch_dir=
 
-        [ "$arch_wim" = arm64 ] && arch_dir=/ARM64 || arch_dir=
+            local unzip_dir=$drv/aws/$driver_dir
+            mkdir -p "$unzip_dir"
+            download "$(get_aws_repo)/${driver_dir}${arch_dir}/$ver/$file" "$drv/aws/$file"
+            unzip -o -d "$unzip_dir" "$drv/aws/$file"
+            cp_drivers "$unzip_dir"
+        }
 
+        # nvme
         # arm64 的 AWSNVMe.zip 已从服务器删除
-        if ! [ "$arch_wim" = arm64 ]; then
-            download "$(get_aws_repo)/NVMe$arch_dir/$nvme_ver/AWSNVMe.zip" $drv/AWSNVMe.zip
-            unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
+        if is_nt_ver_ge 6.1 && [ "$arch_wim" = x86_64 ]; then
+            nvme_ver=$(
+                case "$nt_ver" in
+                6.1) echo 1.3.2 ;; # sha1 签名
+                6.2 | 6.3) echo 1.5.1 ;;
+                *) echo Latest ;;
+                esac
+            )
+            download_and_cp_aws_driver NVMe AWSNVMe.zip "$nvme_ver"
         fi
 
-        download "$(get_aws_repo)/ENA$arch_dir/$ena_ver/AwsEnaNetworkDriver.zip" $drv/AwsEnaNetworkDriver.zip
-        unzip -o -d $drv/aws/ $drv/AwsEnaNetworkDriver.zip
+        # ena
+        # 有 x64 和 amd64
+        if is_nt_ver_ge 6.1; then
+            ena_ver=$(
+                case "$nt_ver" in
+                6.1) $support_sha256 && echo 2.2.3 || echo 2.1.4 ;;
+                6.2 | 6.3) echo 2.6.0 ;;
+                *) echo Latest ;;
+                esac
+            )
+            download_and_cp_aws_driver ENA AwsEnaNetworkDriver.zip "$ena_ver"
+        fi
 
-        cp_drivers $drv/aws
+        # vmclock
+        # 只有 x64，inf 不限系统版本
+        # win8 设备管理器显示的硬件 id 如下
+        # ACPI\VEN_AMZN&DEV_C10C
+        # ACPI\AMZNC10C
+        # *AMZNC10C
+        # win7 下少了第一个，第一个也是 inf 里面匹配的，因此 win7 不会自动安装这个驱动，需要手动安装
+        if [ "$arch_wim" = x86_64 ] && $support_sha256; then
+            # sha256 签名
+            download_and_cp_aws_driver AWSVMClock AWSVMClock.zip Latest
+        fi
+
+        # serial
+        if [ "$arch_wim" = x86_64 ]; then
+            # sha1 签名
+            download_and_cp_aws_driver AWSPCISerialDriver AWSPCISerialDriver.zip Latest
+        fi
     }
 
     # citrix xen
@@ -7234,14 +7368,21 @@ EOF
         cp_drivers $drv/xen/.Drivers
     }
 
-    # citrix xen
+    # 社区版
+    # https://xenbits.xenproject.org/pvdrivers/win/ 未签名
+    # https://github.com/xcp-ng/win-pv-drivers/releases
+
+    # 商业版
     # https://pvupdates.vmd.citrix.com/updates.json 7.2.0.1555
     # https://pvupdates.vmd.citrix.com/updates.v9.json 9.3.3.125
     # https://pvupdates.vmd.citrix.com/autoupdate.v1.json 9.3.3.125
-    # https://pvupdates.vmd.citrix.com/autoupdate.v2.json 9.4.0.146
-    # https://support.citrix.com/s/article/CTX235403-updates-to-xenserver-vm-tools-for-windows-for-xenserver-and-citrix-hypervisor
+    # https://pvupdates.vmd.citrix.com/autoupdate.v2.json 9.6.0.19
+    # https://pvupdates.vmd.citrix.com/ 9.6.0.19
+    # https://www.xenserver.com/downloads 9.6.0.xx
+    # https://docs.xenserver.com/en-us/xenserver/9/vms/windows/vm-tools
+    # https://web.archive.org/web/20230830234619/https://support.citrix.com/article/CTX235403/updates-to-citrix-vm-tools-for-windows-for-xenserver-and-citrix-hypervisor
 
-    # 最高版本
+    # 最高版本?
     # 2012 r2   9.3.1
     # 2012      9.3.0
     # 2008 (r2) 7.2.0.1555
@@ -7341,16 +7482,32 @@ EOF
         local baseurl=https://fedorapeople.org/groups/virt/virtio-win/direct-downloads
 
         add_driver_virtio_from_rpm() {
-            # fedorapeople may reject or timeout on some VPS IPs, and DaoCloud may still fetch from it.
-            # The CentOS Stream x86_64 repo publishes this noarch RPM with Windows x86/x64 virtio drivers.
-            local url=https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/Packages/virtio-win-1.9.45-1.el10.noarch.rpm
-            local cpio_file
+            # fedorapeople 拉黑了华为云，可能有其他厂商也被拉黑
+            # DaoCloud 只支持 ipv4
+            # 因此这里用 rocky 的 virtio-win rpm 作为 fallback，但只有 x86/x64 驱动
+
+            # rocky 的 virtio-win 比 centos 新
+            # https://pkgs.org/download/virtio-win
 
             info "Add drivers: Generic virtio rpm"
+
+            local ROCKY_RELEASEVER=10
+
+            if is_in_china; then
+                local rocky_mirror=https://mirror.nju.edu.cn/rocky
+            else
+                local rocky_mirror=https://dl.rockylinux.org/pub/rocky
+            fi
+            local rocky_mirror_os="$rocky_mirror/$ROCKY_RELEASEVER/AppStream/x86_64/os"
+
+            primary_xml_gz=$(wget -O- "$rocky_mirror_os/repodata/repomd.xml" |
+                grep -Eo 'repodata/[0-9a-f]+-primary.xml.gz' | grep .)
+            virtio_win_rpm_path=$(wget -O- "$rocky_mirror_os/$primary_xml_gz" | zcat |
+                grep -Eo 'Packages/v/virtio-win-[^"]+\.noarch\.rpm' | sort -Vr | head -1 | grep .)
+
+            download "$rocky_mirror_os/$virtio_win_rpm_path" $drv/virtio.rpm
+
             apk add 7zip
-
-            download "$url" $drv/virtio.rpm
-
             mkdir -p $drv/virtio-rpm/stage $drv/virtio-rpm/root
             7z x $drv/virtio.rpm -o$drv/virtio-rpm/stage -y -bb1
             cpio_file=$(find $drv/virtio-rpm/stage -maxdepth 1 -name '*.cpio' | head -1)
@@ -7360,6 +7517,7 @@ EOF
             find $drv/virtio-rpm/root -type f -ipath "*/$virtio_sys/$arch/*.inf" "$@" | grep . >/dev/null ||
                 error_and_exit "Can't find $virtio_sys/$arch drivers in virtio-win rpm."
             cp_drivers $drv/virtio-rpm/root "$@"
+            apk del 7zip
         }
 
         get_latest_virtio_dir() {
@@ -7393,6 +7551,8 @@ EOF
         *)
             # 先获取最新版本号，再下载
             # 用 stable-virtio 的话国内镜像下载的可能是缓存的旧版
+
+            # anubis 默认策略拉黑了华为云，连验证的机会都没有
 
             # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
             # 路径是网页，可能会弹出 anubis 验证
@@ -7642,8 +7802,13 @@ EOF
         info "Add drivers: GCP"
 
         # https://packages.cloud.google.com/yuck/repos/google-compute-engine-stable/index
-        # https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-gvnic-gq-stable/index
-        # 官方镜像的 gvnic 是从 gvnic-gq-stable 获取的，版本低一点，但更稳定?
+        # https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-gvnic-stable/index
+        # https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-gga-stable/index
+        # https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-netkvm-stable/index
+        # https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-balloon-stable/index
+        # https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-pvpanic-stable/index
+        # https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-vioscsi-stable/index
+        # https://packages.cloud.google.com/yuck/repos/google-compute-engine-driver-nvme-stable/index
 
         mkdir -p $drv/gce
         gce_repo=https://packages.cloud.google.com/yuck
@@ -8172,11 +8337,16 @@ get_ubuntu_kernel_flavor() {
     # linux-image-virtual = linux-image-6.x-generic
     # linux-image-generic = linux-image-6.x-generic + amd64-microcode + intel-microcode + linux-firmware + linux-modules-extra-generic
 
-    # TODO: ISO virtual-hwe-24.04 不安装 linux-image-extra-virtual-hwe-24.04 不然会花屏
-
     # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
     # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
     # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
+
+    is_ubuntu_lts && suffix=-hwe-$releasever || suffix=
+
+    if [ "$no_cloud_kernel" = 1 ]; then
+        echo generic$suffix
+        return
+    fi
 
     # 这里有坑
     # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
@@ -8186,10 +8356,14 @@ get_ubuntu_kernel_flavor() {
     cache_dmi_and_virt
     vendor="$(get_cloud_vendor)"
     case "$vendor" in
-    aws | gcp | oracle | azure | ibm) echo $vendor ;;
+    aws | gcp | oracle | azure | ibm)
+        echo $vendor
+        ;;
     *)
-        is_ubuntu_lts && suffix=-hwe-$releasever || suffix=
-        if is_virt; then
+        # 20.04 后才有
+        if is_virt_contains vmware && [ "$releasever" != 18.04 ]; then
+            echo vmware$suffix
+        elif is_virt; then
             echo virtual$suffix
         else
             echo generic$suffix
@@ -8490,6 +8664,7 @@ fi
 # 并防止重复运行
 if ls /configs/frpc.* >/dev/null 2>&1 && ! pidof frpc >/dev/null; then
     info 'run frpc'
+    chmod 600 /configs/frpc.*
     add_community_repo
     apk add frp
     while true; do
