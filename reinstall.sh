@@ -11,7 +11,7 @@ confhome=https://raw.githubusercontent.com/adsorgcn/reinstall/main
 confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/adsorgcn/reinstall/main
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0004
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0005
 
 # 记录要用到的 windows 程序，运行时输出删除 \r
 WINDOWS_EXES='cmd powershell wmic reg diskpart netsh bcdedit mountvol'
@@ -368,6 +368,10 @@ insert_into_file() {
 
     case "$location" in
     before) line_num=$((line_num - 1)) ;;
+    replace)
+        sed -i "${line_num}d" "$file"
+        line_num=$((line_num - 1))
+        ;;
     after) ;;
     *) return 1 ;;
     esac
@@ -1652,7 +1656,9 @@ Continue?
         if is_in_china; then
             mirror=https://mirror.nju.edu.cn/nix-channels
         else
-            mirror=https://nixos.org/channels
+            # https://nixos.org/channels 没有 ipv6
+            # 且跳转到 https://channels.nixos.org
+            mirror=https://channels.nixos.org
         fi
 
         if is_use_cloud_image; then
@@ -4178,9 +4184,18 @@ exit_if_cant_use_cloud_kernel() {
 can_use_cloud_kernel() {
     # initrd 下也要使用，不要用 <<<
 
-    # 有些虚拟机用了 ahci，但云内核没有 ahci 驱动
-    cloud_eth_modules='ena|gve|mana|virtio_net|xen_netfront|hv_netvsc|vmxnet3|mlx4_en|mlx4_core|mlx5_core|ixgbevf'
-    cloud_blk_modules='ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi'
+    if [ "$distro" = opensuse ]; then
+        # kernel-default-base 缺少 ena gve mlx mana 驱动
+        cloud_eth_modules='virtio_net|xen_netfront|hv_netvsc|vmxnet3|e100|e1000|e1000e|8139cp|8139too'
+        cloud_blk_modules='ata_generic|ata_piix|ahci|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi'
+    else
+        # debian kali
+        cloud_eth_modules='ena|gve|mana|virtio_net|xen_netfront|hv_netvsc|vmxnet3|mlx4_en|mlx4_core|mlx5_core|ixgbevf'
+        cloud_blk_modules='ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi'
+        if { [ "$distro" = debian ] && [ "$releasever" -ge 13 ]; } || [ "$distro" = kali ]; then
+            cloud_blk_modules="$cloud_blk_modules|ahci"
+        fi
+    fi
 
     # disk
     drivers="$(get_disk_drivers $1)"
@@ -4212,6 +4227,8 @@ create_can_use_cloud_kernel_sh() {
         $(get_function get_disk_drivers)
         $(get_function can_use_cloud_kernel)
 
+        distro="$distro"
+        releasever="$releasever"
         can_use_cloud_kernel "\$@"
 EOF
 }
@@ -4326,11 +4343,21 @@ EOF
 EOF
 
     # 判断云镜像 debain 能否用云内核
-    if is_distro_like_debian; then
+    if is_distro_like_debian || [ "$distro" = opensuse ]; then
         create_can_use_cloud_kernel_sh can_use_cloud_kernel.sh
         insert_into_file init before '^exec (/bin/busybox )?switch_root' <<EOF
         cp /can_use_cloud_kernel.sh \$sysroot/
         chmod a+x \$sysroot/can_use_cloud_kernel.sh
+EOF
+    fi
+
+    # 临时修复 liveos getty 运行在 tty0
+    # shellcheck disable=SC2016
+    if [ "$nextos_releasever" = 3.24 ] &&
+        txt_to_grep='done < "$ROOT"/sys/class/tty/"$1"/active' &&
+        grep -qF "$txt_to_grep" init; then
+        insert_into_file init replace "$txt_to_grep" -F <<EOF
+done < <(cat "\$ROOT"/sys/class/tty/"\$1"/active | xargs -n 1)
 EOF
     fi
 }

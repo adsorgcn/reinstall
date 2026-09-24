@@ -10,7 +10,7 @@ set -eE
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 # shellcheck disable=SC2034
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0004
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0005
 
 TRUE=0
 FALSE=1
@@ -1165,6 +1165,10 @@ insert_into_file() {
 
         case "$location" in
         before) line_num=$((line_num - 1)) ;;
+        replace)
+            sed -i "${line_num}d" "$file"
+            line_num=$((line_num - 1))
+            ;;
         after) ;;
         *) return 1 ;;
         esac
@@ -1713,20 +1717,6 @@ install_alpine() {
         set_ssh_keys_and_del_password /os
     fi
 
-    # alpine 3.24+
-    # 要从 /etc/inittab 删除多余的 tty0
-    # 否则开机时 vnc 会有两个登录提示，一个是 tty0，一个是 tty1
-
-    # sed 找到 # enable login on alternative console 的行
-    # 用 N 读取下一行到当前空间
-    # 再匹配 \ntty0:
-    sed -i '
-/^# enable login on alternative console$/{
-    N
-    /\ntty0:/d
-}
-' /os/etc/inittab
-
     # 下载 fix-eth-name
     download "$confhome/fix-eth-name.sh" /os/fix-eth-name.sh
     download "$confhome/fix-eth-name.initd" /os/etc/init.d/fix-eth-name
@@ -1814,7 +1804,8 @@ install_nixos() {
     ram_per_thread=2048
 
     threads=$(get_build_threads $ram_per_thread)
-    swap_size=$(get_need_swap_size $ram_per_thread)
+    # 最少需要的总内存 = 1 个编译线程所需的内存 + Alpine Live OS 所需的内存 (512M)
+    swap_size=$(get_need_swap_size $((ram_per_thread + 512)))
 
     show_nixos_config() {
         echo
@@ -2075,6 +2066,21 @@ EOF
         )
     fi
 
+    if is_tencent_cloud; then
+        # 不能用 /bin/sh 和 /bin/echo
+        # /nix/store/84akrjvm0clyjkwx3agr03j2iz1w4kxi-initrd-udev-rules/99-local.rules (origin unknown) contains references to /bin/sh and /bin/echo.
+        nix_udev_rules=$(
+            cat <<EOF
+services.udev.extraRules = ''
+  KERNEL=="vd*[a-z]", ACTION=="add|change", SUBSYSTEM=="block", ATTR{queue/max_sectors_kb}="512"
+'';
+boot.initrd.services.udev.rules = ''
+  KERNEL=="vd*[a-z]", ACTION=="add|change", SUBSYSTEM=="block", ATTR{queue/max_sectors_kb}="512"
+'';
+EOF
+        )
+    fi
+
     # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
     create_nixos_network_config /tmp/nixos_network_config.nix
 
@@ -2087,6 +2093,7 @@ boot.kernelParams = [ $(get_ttys console= | quote_word) ];
 $nix_users
 $nix_openssh
 $nix_frpc
+$nix_udev_rules
 $(cat /tmp/nixos_network_config.nix)
 ###################################################
 EOF
@@ -4100,7 +4107,7 @@ EOF
     fi
 
     # opensuse
-    # 1. kernel-default-base 缺少 nvme gve mlx5 mana 驱动，换成 kernel-default
+    # 1. kernel-default-base 缺少 ena gve mlx mana 驱动，换成 kernel-default
     # 2. 添加微码+固件
     # https://documentation.suse.com/smart/virtualization-cloud/html/minimal-vm/index.html
     if grep -q opensuse $os_dir/etc/os-release; then
@@ -4122,11 +4129,18 @@ EOF
         rm /net.cfg
 
         # 选择新内核
-        # 只有 leap 有 kernel-azure
-        if grep -iq leap $os_dir/etc/os-release && [ "$(get_cloud_vendor)" = azure ]; then
-            target_kernel='kernel-azure'
-        else
+        if [ "$no_cloud_kernel" = 1 ]; then
             target_kernel='kernel-default'
+        else
+            # 只有 leap 有 kernel-azure
+            # shellcheck disable=SC2046
+            if grep -iq leap $os_dir/etc/os-release && [ "$(get_cloud_vendor)" = azure ]; then
+                target_kernel='kernel-azure'
+            elif sh /can_use_cloud_kernel.sh "$xda" $(get_eths); then
+                target_kernel='kernel-default-base'
+            else
+                target_kernel='kernel-default'
+            fi
         fi
 
         # rpm -qi 不支持通配符
@@ -4659,10 +4673,17 @@ add_user_if_need() {
             chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- BusyBox; then
             chroot "$os_dir" adduser --disabled-password "$username"
 
-        # debian/ubuntu
+        # 新版 debian/ubuntu
         elif is_have_cmd_on_disk "$os_dir" adduser &&
-            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--disabled-password'; then
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--disabled-password' &&
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--comment'; then
             chroot "$os_dir" adduser --disabled-password --comment '' "$username"
+
+        # 旧版 debian/ubuntu
+        elif is_have_cmd_on_disk "$os_dir" adduser &&
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--disabled-password' &&
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--gecos'; then
+            chroot "$os_dir" adduser --disabled-password --gecos '' "$username"
 
         # el
         elif is_have_cmd_on_disk "$os_dir" adduser &&
@@ -8372,6 +8393,87 @@ get_ubuntu_kernel_flavor() {
     esac
 }
 
+is_tencent_cloud() {
+    [ "$(cat /sys/devices/virtual/dmi/id/sys_vendor 2>/dev/null)" = 'Tencent Cloud' ]
+}
+
+add_max_sectors_kb_rule() {
+    local os_dir=$1
+
+    # 普通发行版
+    if [ -d $os_dir/etc/udev/rules.d/ ]; then
+        # 取自腾讯云 ubuntu 26.04 镜像
+        cat <<EOF >$os_dir/etc/udev/rules.d/80-max-sectors-blk.rules
+KERNEL=="vd*[a-z]", ACTION=="add|change", SUBSYSTEM=="block", RUN+="/bin/sh -c '/bin/echo 512 > /sys/%p/queue/max_sectors_kb'"
+EOF
+
+    # alpine
+    elif [ -f $os_dir/etc/mdev.conf ]; then
+        if ! grep -Eq '^vd.*max_sectors_kb' "$os_dir/etc/mdev.conf"; then
+            # shellcheck disable=SC2016
+            sed -Ei \
+                '/^vd\[a-z\]/s,$,; case "$ACTION" in add|change) if [[ "$MDEV" =~ [a-z]$ ]]; then echo 512 >/sys/class/block/$MDEV/queue/max_sectors_kb; fi;; esac,' \
+                "$os_dir/etc/mdev.conf"
+        fi
+    fi
+
+}
+
+set_max_sectors_kb_for_tencent_cloud_liveos() {
+    if is_tencent_cloud; then
+        local block
+        for block in /sys/class/block/vd[a-z]; do
+            if [ -d "$block" ]; then
+                echo 512 >"$block/queue/max_sectors_kb"
+            fi
+        done
+        add_max_sectors_kb_rule /
+        rc-service mdev restart
+        sleep 1
+        # update_part
+    fi
+}
+
+set_max_sectors_kb_for_tencent_cloud_persist() {
+    local os_dir etc_dir
+    if is_tencent_cloud && etc_dir=$({ ls -d /os/etc/ || ls -d /os/*/etc/; } 2>/dev/null); then
+        os_dir=$(dirname $etc_dir)
+        # 重新挂载为读写
+        mount -o remount,rw /os
+
+        # rule
+        add_max_sectors_kb_rule "$os_dir"
+
+        # swap on
+        # dracut 需要大量内存
+        # 防止之前有 swap
+        swapoff -a
+        rm -f $os_dir/swapfile
+        create_swap_if_ram_less_than 2048 $os_dir/swapfile
+
+        # 重新生成 initramfs
+        # el
+        if is_have_cmd_on_disk $os_dir dracut; then
+            chroot $os_dir dracut -f --regenerate-all
+        # debian/ubuntu
+        elif is_have_cmd_on_disk $os_dir update-initramfs; then
+            chroot $os_dir update-initramfs -u -k all
+        # arch
+        elif is_have_cmd_on_disk $os_dir mkinitcpio; then
+            echo 'FILES+=(/etc/udev/rules.d/80-max-sectors-blk.rules)' \
+                >$os_dir/etc/mkinitcpio.conf.d/80-max-sectors-blk.conf
+            chroot $os_dir mkinitcpio -P
+        # alpine
+        elif is_have_cmd_on_disk $os_dir mkinitfs; then
+            chroot $os_dir mkinitfs
+        fi
+
+        # swap off
+        swapoff -a
+        rm -f $os_dir/swapfile
+    fi
+}
+
 install_redhat_ubuntu() {
     info "Download iso installer"
 
@@ -8488,6 +8590,9 @@ trans() {
         find_xda
     fi
 
+    # 腾讯云特殊处理
+    set_max_sectors_kb_for_tencent_cloud_liveos
+
     if [ "$distro" != "alpine" ]; then
         setup_web_if_enough_ram
         # util-linux 包含 lsblk
@@ -8577,6 +8682,11 @@ trans() {
             esac
             ;;
         esac
+    fi
+
+    # 腾讯云特殊处理
+    if ! { [ "$distro" = dd ] || [ "$distro" = nixos ]; }; then
+        set_max_sectors_kb_for_tencent_cloud_persist
     fi
 
     # 需要用到 lsblk efibootmgr ，只要 1M 左右容量
