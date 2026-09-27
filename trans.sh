@@ -6501,6 +6501,13 @@ get_drivers() {
     )
 }
 
+is_xda_non_standard_virtio_scsi() {
+    get_drivers "/sys/class/block/$xda" | grep -q virtio_scsi &&
+        device_path="$(readlink -f "/sys/class/block/$xda" | sed 's,/virtio.*,,')" &&
+        [ -e "$device_path/subsystem_vendor" ] &&
+        ! [ "$(cat "$device_path/subsystem_vendor")" = 0x1af4 ]
+}
+
 get_windows_type_from_windows_drive() {
     local os_dir=$1
 
@@ -6989,7 +6996,7 @@ install_windows() {
         if is_virt_contains virtio; then
             if [ "$vendor" = aliyun ] && is_nt_ver_ge 6.1 && [ "$arch_wim" = x86_64 ]; then
                 add_driver_aliyun_virtio
-            elif [ "$vendor" = qcloud ] && is_nt_ver_ge 6.1 && [ "$arch_wim" = x86_64 ]; then
+            elif [ "$vendor" = qcloud ] && is_nt_ver_ge 6.0 && { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
                 add_driver_qcloud_virtio
             # 未测试是否需要专用驱动
             elif false && [ "$vendor" = huawei ] && is_nt_ver_ge 6.0 && { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
@@ -7565,24 +7572,36 @@ EOF
         }
 
         case "$nt_ver" in
-        6.0 | 6.1) $support_sha256 &&
-            dir=archive-virtio/virtio-win-0.1.187-1 ||
-            dir=archive-virtio/virtio-win-0.1.173-9 ;;        # vista|w7|2k8|2k8R2
+        6.0 | 6.1)
+            if $support_sha256; then
+                if is_xda_non_standard_virtio_scsi; then
+                    dir=archive-virtio/virtio-win-0.1.187-1 # 甲骨文
+                else
+                    dir=stable-virtio
+                fi
+            else
+                dir=archive-virtio/virtio-win-0.1.173-9
+            fi
+            ;;                                                # vista|w7|2k8|2k8R2
         6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-2 ;; # w8|w8.1|2k12|2k12R2
-        *)
-            # 先获取最新版本号，再下载
-            # 用 stable-virtio 的话国内镜像下载的可能是缓存的旧版
+        *) dir=stable-virtio ;;
+        esac
 
-            # anubis 默认策略拉黑了华为云，连验证的机会都没有
+        # 先获取最新版本号，再下载
+        # 用 stable-virtio 的话国内镜像下载的可能是缓存的旧版
 
-            # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
-            # 路径是网页，可能会弹出 anubis 验证
+        # anubis 默认策略拉黑了华为云，连验证的机会都没有
 
-            # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/CHECKSUM
-            # 路径是文件，应该不会弹出 anubis 验证？
+        # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
+        # 路径是网页，可能会弹出 anubis 验证
+
+        # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/CHECKSUM
+        # 路径是文件，应该不会弹出 anubis 验证？
+        if [ "$dir" = stable-virtio ]; then
             if ! dir=$(get_latest_virtio_dir "$baseurl"); then
-                mirror_baseurl=https://files.m.daocloud.io/$(echo "$baseurl" | sed -E 's,^https?://,,i')
-                if is_any_ipv4_has_internet && dir=$(get_latest_virtio_dir "$mirror_baseurl"); then
+                if is_any_ipv4_has_internet &&
+                    mirror_baseurl=https://files.m.daocloud.io/$(echo "$baseurl" | sed -E 's,^https?://,,i') &&
+                    dir=$(get_latest_virtio_dir "$mirror_baseurl"); then
                     baseurl=$mirror_baseurl
                 elif [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; then
                     add_driver_virtio_from_rpm "$@"
@@ -7591,9 +7610,7 @@ EOF
                     error_and_exit "Failed to get latest virtio-win version."
                 fi
             fi
-            # dir=stable-virtio
-            ;;
-        esac
+        fi
 
         # 如果 dir 包含数字，则是从具体版本号文件夹下载，文件不会更新，可以使用国内镜像
         if [[ "$dir" =~ [0-9] ]]; then
@@ -7672,9 +7689,86 @@ EOF
     add_driver_qcloud_virtio() {
         info "Add drivers: QCloud virtio"
 
-        # 测试版?
-        # https://mirrors.tencent.com/install/cts/windows/Drivers.zip
+        # 标准型S8 | S8.LARGE8 实例安装 32 位 win10
+        # PE 阶段加载社区版 viostor 驱动后会自动重启
+        # 因此 32 位也需要用腾讯云版驱动
 
+        # 下面的版本以 win10 viostor amd64 inf 为准
+
+        # 58005 没有 32 位
+        # https://mirrors.tencent.com/install/windows/virtio_64_1.0.9.exe
+
+        # 58007 没有气球驱动
+        # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/Win7_Win2008R2.zip                 有 32 位
+        # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/Win8.1_Win2012R2.zip               有 32 位
+        # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/Win10_2016_2019.zip                有 32 位
+        # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/VirtIO_Win_58007.zip               有 32 位
+        # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/Install_QCloudVirtIO.zip           只有 win10 有 32 位
+        # https://go2tencentcloud-1251783334.cos.accelerate.tencentcos.cn/latest/go2tencentcloud.zip 没有 32 位
+
+        # 58010
+        # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/Install_KVMVirtIO.zip           只有 win10 有 32 位，没有气球驱动，netkvm 是社区版
+        # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/Install_QCloudVirtIO_new.zip    只有 win10 有 32 位，只有 win10 有气球驱动
+        # https://winpecheck-1251783334.cos.accelerate.tencentcos.cn/Install_QCloudVirtIO_new.zip
+        # https://mirrors.tencent.com/install/cts/windows/Drivers.zip                             有 32 位，没有气球驱动
+        # https://mirrors.tencent.com/install/cts/windows/AllTools/Drivers.zip
+
+        # 腾讯云 windows server 2025 系统镜像，驱动是 58010
+
+        # Install_QCloudVirtIO_new.zip 可视为稳定版
+        # 因为 WinPE-Diag.7z\checks\50-DriverCleanup.ps1 用的是 Install_QCloudVirtIO_new.zip
+        # https://mirrors.tencent.com/install/cts/windows/WinPE-Diag.7z
+
+        # 第 1 步
+        # 从 Drivers.zip 获取 viostor netkvm qxldod 驱动
+        # 里面的 qxldod windows server 驱动和普通 windows 驱动文件相同
+        # XP 文件夹有个中文文件，busybox unzip 解压会报错，因此排除该文件夹
+        download https://mirrors.tencent.com/install/cts/windows/Drivers.zip $drv/Drivers.zip
+        unzip $drv/Drivers.zip -d $drv/qcloud/
+        unzip $drv/qcloud/Drivers/VirtIO_Win_20250827.zip -d $drv/qcloud/ -x '*/XP/*'
+
+        drivers=$(
+            case "$nt_ver" in
+            6.0)
+                # sha1
+                echo VioStor/Vista_Win2008
+                echo NetKVM/Vista_Win2008
+                # 没有 qxl/qxldod
+                ;;
+            6.1)
+                # sha1
+                echo VioStor/Win7_2008R2
+                echo NetKVM/Win7_Win2008R2
+                # 没有 qxl/qxldod
+                ;;
+            6.2)
+                echo VioStor/Win8_8.1_2012_2012R2
+                echo NetKVM/Win8_Win2012
+                echo qxldod/w8
+                ;;
+            6.3)
+                echo VioStor/Win8_8.1_2012_2012R2
+                echo NetKVM/Win8.1_Win2012R2
+                echo qxldod/w8.1
+                ;;
+            *)
+                echo VioStor/Win10_2016_2019
+                echo NetKVM/Win10_2016_2019
+                echo qxldod/w10
+                ;;
+            esac
+        )
+
+        local dir
+        for dir in $drivers; do
+            cp_drivers "$drv/qcloud/VirtIO_Win_20250827/$dir/$arch"
+        done
+
+        # 第 2 步
+        # 从 virtio_64_1.0.9.exe 获取气球驱动
+        if ! { is_nt_ver_ge 6.1 && [ "$arch_wim" = x86_64 ]; }; then
+            return
+        fi
         apk add 7zip
         download https://mirrors.tencent.com/install/windows/virtio_64_1.0.9.exe $drv/virtio.exe true
         exclude='$*' # 排除 $PLUGINSDIR
@@ -7703,6 +7797,10 @@ EOF
 
         for old_name in $drivers; do
             part=${old_name%%_*}
+            # 只复制气球驱动
+            if ! [ "$part" = "balloon" ]; then
+                continue
+            fi
             if ! [ "$old_name" = "$part" ]; then
                 find $drv/qcloud/$part -type f -iname "$old_name.*" | while read -r file; do
                     ext="${file##*.}"
