@@ -93,7 +93,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        alpine      3.21|3.22|3.23|3.24
                        kali        last-snapshot|rolling
                        openeuler   20.03|22.03|24.03|26.09
-                       ubuntu      18.04|20.04|22.04|24.04|26.04 [--minimal]
+                       ubuntu      18.04|20.04|22.04|24.04|26.04|26.10 [--minimal]
                        arch
                        gentoo
                        aosc
@@ -1626,6 +1626,7 @@ Continue?
         22.04) codename=jammy ;;
         24.04) codename=noble ;;
         26.04) codename=resolute ;;
+        26.10) codename=stonking ;;
         esac
 
         if is_use_cloud_image; then
@@ -1698,7 +1699,9 @@ Continue?
             if is_in_china; then
                 mirror=https://mirror.nju.edu.cn/archlinux
             else
-                mirror=https://geo.mirror.pkgbuild.com # geoip
+                # https://archlinux.org/mirrorlist/all/   # 镜像源列表
+                # mirror=https://geo.mirror.pkgbuild.com  # geoip
+                mirror=https://fastly.mirror.pkgbuild.com # cdn
             fi
         else
             if is_in_china; then
@@ -2062,12 +2065,7 @@ Continue with DD?
                         img=$ci_mirror/$releasever/images/CentOS-$releasever-$elarch-GenericCloud$ver.qcow2c
                         ;;
                     *)
-                        # 有 bios 和 efi 镜像
-                        # https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
-                        # https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-x86_64-10-latest.x86_64.qcow2
-                        [ "$elarch" = x86_64 ] &&
-                            img=$ci_mirror/$releasever-stream/$elarch/images/CentOS-Stream-GenericCloud-x86_64-$releasever-latest.$elarch.qcow2 ||
-                            img=$ci_mirror/$releasever-stream/$elarch/images/CentOS-Stream-GenericCloud-$releasever-latest.$elarch.qcow2
+                        img=$ci_mirror/$releasever-stream/$elarch/images/CentOS-Stream-GenericCloud-$releasever-latest.$elarch.qcow2
                         ;;
                     esac
                     ;;
@@ -2289,7 +2287,7 @@ verify_os_name() {
         'opensuse    16.0|tumbleweed' \
         'alpine      3.21|3.22|3.23|3.24' \
         'openeuler   20.03|22.03|24.03|26.09' \
-        'ubuntu      18.04|20.04|22.04|24.04|26.04' \
+        'ubuntu      18.04|20.04|22.04|24.04|26.04|26.10' \
         'kali        last-snapshot|rolling' \
         'redhat' \
         'arch' \
